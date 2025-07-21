@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<title>全色1x1PNG一括生成＆ZIPダウンロード</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 600px; margin: 2rem auto; }
+  button { padding: 0.5rem 1rem; font-size: 1.1rem; }
+  #log { margin-top: 1rem; white-space: pre-wrap; height: 150px; overflow-y: auto; border: 1px solid #ccc; padding: 0.5rem; background: #f9f9f9; }
+</style>
+</head>
+<body>
+  <h1>全色1x1 PNG 一括生成＆ZIPダウンロード</h1>
+  <p>処理は非常に重くなります。時間がかかっても構わない方のみ実行してください。</p>
+  <button id="startBtn">生成開始</button>
+  <div id="log"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script>
+    const startBtn = document.getElementById('startBtn');
+    const logDiv = document.getElementById('log');
+
+    // 16進6桁に変換
+    function toHex6(num) {
+      return num.toString(16).padStart(6, '0');
+    }
+
+    // 1x1キャンバスで色をPNGデータURLに変換
+    function create1x1PNG(color) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      const ctx = canvas.getContext('2d');
+      const r = (color >> 16) & 0xff;
+      const g = (color >> 8) & 0xff;
+      const b = color & 0xff;
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      ctx.fillRect(0, 0, 1, 1);
+      return canvas.toDataURL('image/png');
+    }
+
+    // base64データURLからバイナリデータを取得
+    function dataURLtoUint8Array(dataurl) {
+      const base64 = dataurl.split(',')[1];
+      const binary_string = atob(base64);
+      const len = binary_string.length;
+      const bytes = new Uint8Array(len);
+      for(let i = 0; i < len; i++) {
+        bytes[i] = binary_string.charCodeAt(i);
+      }
+      return bytes;
+    }
+
+    startBtn.addEventListener('click', async () => {
+      startBtn.disabled = true;
+      logDiv.textContent = '処理開始...\n';
+
+      const zip = new JSZip();
+      const totalColors = 0xFFFFFF + 1;
+
+      // 処理負荷を分散するためチャンク処理
+      const chunkSize = 10000; // 1万色ずつ処理
+      let processed = 0;
+
+      for(let start = 0; start < totalColors; start += chunkSize) {
+        const end = Math.min(start + chunkSize, totalColors);
+
+        for(let color = start; color < end; color++) {
+          const hex = toHex6(color);
+          const dataURL = create1x1PNG(color);
+          const bytes = dataURLtoUint8Array(dataURL);
+          zip.file(`${hex}.png`, bytes);
+        }
+
+        processed += (end - start);
+        logDiv.textContent = `処理中: ${processed} / ${totalColors} 色生成中...\n`;
+        await new Promise(r => setTimeout(r, 100)); // ブラウザ処理を少し待機して応答維持
+      }
+
+      logDiv.textContent = '圧縮処理中...お待ちください。\n';
+      const content = await zip.generateAsync({type:"blob"});
+
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(content);
+      a.download = 'all_rgb_1x1_images.zip';
+      a.click();
+
+      logDiv.textContent = '完了！ZIPファイルのダウンロードが開始されました。\n';
+      startBtn.disabled = false;
+    });
+  </script>
+</body>
+</html>
