@@ -2,16 +2,29 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8" />
-<title>全色1x1PNG一括生成＆ZIPダウンロード</title>
+<title>分割対応 全色1x1PNG一括生成＆ZIPダウンロード</title>
 <style>
   body { font-family: Arial, sans-serif; max-width: 600px; margin: 2rem auto; }
   button { padding: 0.5rem 1rem; font-size: 1.1rem; }
+  label { display: block; margin-top: 1rem; }
+  input[type="text"] { width: 120px; font-family: monospace; }
   #log { margin-top: 1rem; white-space: pre-wrap; height: 150px; overflow-y: auto; border: 1px solid #ccc; padding: 0.5rem; background: #f9f9f9; }
 </style>
 </head>
 <body>
-  <h1>全色1x1 PNG 一括生成＆ZIPダウンロード</h1>
-  <p>処理は非常に重くなります。時間がかかっても構わない方のみ実行してください。</p>
+  <h1>分割対応 全色1x1 PNG 一括生成＆ZIPダウンロード</h1>
+  <p>指定範囲の色だけを生成可能。処理負荷を分散できます。</p>
+
+  <label>
+    開始カラーコード（16進6桁）
+    <input type="text" id="startColor" value="000000" maxlength="6" />
+  </label>
+
+  <label>
+    終了カラーコード（16進6桁）
+    <input type="text" id="endColor" value="0000ff" maxlength="6" />
+  </label>
+
   <button id="startBtn">生成開始</button>
   <div id="log"></div>
 
@@ -20,9 +33,12 @@
     const startBtn = document.getElementById('startBtn');
     const logDiv = document.getElementById('log');
 
-    // 16進6桁に変換
     function toHex6(num) {
       return num.toString(16).padStart(6, '0');
+    }
+
+    function isValidHex6(str) {
+      return /^[0-9a-fA-F]{6}$/.test(str);
     }
 
     // 1x1キャンバスで色をPNGデータURLに変換
@@ -52,29 +68,49 @@
     }
 
     startBtn.addEventListener('click', async () => {
+      const startStr = document.getElementById('startColor').value.trim();
+      const endStr = document.getElementById('endColor').value.trim();
+
+      if(!isValidHex6(startStr) || !isValidHex6(endStr)) {
+        alert('開始・終了カラーコードは6桁の16進数で入力してください。例: 00ff00');
+        return;
+      }
+
+      const start = parseInt(startStr, 16);
+      const end = parseInt(endStr, 16);
+
+      if(start > end) {
+        alert('開始カラーコードは終了カラーコード以下にしてください。');
+        return;
+      }
+
+      // 色数制限チェック（例10万色以上は警告）
+      if(end - start > 100000) {
+        if(!confirm(`指定された色範囲は${end - start + 1}色です。処理に時間がかかる可能性があります。続行しますか？`)) {
+          return;
+        }
+      }
+
       startBtn.disabled = true;
       logDiv.textContent = '処理開始...\n';
 
       const zip = new JSZip();
-      const totalColors = 0xFFFFFF + 1;
-
-      // 処理負荷を分散するためチャンク処理
-      const chunkSize = 10000; // 1万色ずつ処理
+      const chunkSize = 10000;
       let processed = 0;
 
-      for(let start = 0; start < totalColors; start += chunkSize) {
-        const end = Math.min(start + chunkSize, totalColors);
+      for(let rangeStart = start; rangeStart <= end; rangeStart += chunkSize) {
+        const rangeEnd = Math.min(rangeStart + chunkSize - 1, end);
 
-        for(let color = start; color < end; color++) {
+        for(let color = rangeStart; color <= rangeEnd; color++) {
           const hex = toHex6(color);
           const dataURL = create1x1PNG(color);
           const bytes = dataURLtoUint8Array(dataURL);
           zip.file(`${hex}.png`, bytes);
         }
 
-        processed += (end - start);
-        logDiv.textContent = `処理中: ${processed} / ${totalColors} 色生成中...\n`;
-        await new Promise(r => setTimeout(r, 100)); // ブラウザ処理を少し待機して応答維持
+        processed += (rangeEnd - rangeStart + 1);
+        logDiv.textContent = `処理中: ${processed} / ${end - start + 1} 色生成中...\n`;
+        await new Promise(r => setTimeout(r, 50)); // 応答維持
       }
 
       logDiv.textContent = '圧縮処理中...お待ちください。\n';
@@ -82,7 +118,7 @@
 
       const a = document.createElement('a');
       a.href = URL.createObjectURL(content);
-      a.download = 'all_rgb_1x1_images.zip';
+      a.download = `rgb_${startStr}_to_${endStr}.zip`;
       a.click();
 
       logDiv.textContent = '完了！ZIPファイルのダウンロードが開始されました。\n';
